@@ -1,7 +1,6 @@
 <p align="center">
-  <img src="assets/images/icon.ico" width="128" height="128">
+  <img src="assets/images/icon.ico" width="64" height="64">
 </p>
-
 # Audio Spectrum
 Audio visualization tool.
 
