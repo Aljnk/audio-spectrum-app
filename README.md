@@ -1,5 +1,9 @@
+<p align="center">
+  <img src="assets/images/icon.ico" width="128" height="128">
+</p>
+
 # Audio Spectrum
-Professional audio visualization tool.
+Audio visualization tool.
 
 # Key Features
 * **Multi-format Support**: Works with MP3, WAV, FLAC, and M4A. 
