@@ -1,0 +1,7 @@
+PySide6
+librosa
+moviepy
+numpy
+Pillow
+proglog
+requests
