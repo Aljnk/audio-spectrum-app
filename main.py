@@ -517,7 +517,7 @@ class MainWindow(QMainWindow):
 			lg(r.status_code)
 			if r.status_code==200:
 				d=r.json();v=d.get("tag_name")
-				if v and v!=VERSION:self.exec_ov(UpdateDialog(self,v,d.get("html_url")))
+				if v and v.lstrip('v') > VERSION.lstrip('v'):self.exec_ov(UpdateDialog(self,v,d.get("html_url")))
 				elif not quiet:self.exec_ov(UpdateDialog(self))
 			elif not quiet:self.exec_ov(UpdateDialog(self,err="Server error"))
 		except:
@@ -853,5 +853,5 @@ def start():
 	ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("aljnk.audiospectrum.1.0")
 	app=QApplication(sys.argv)
 	app.setWindowIcon(QIcon(rp(os.path.join("assets","images","icon.ico"))))
-	win=MainWindow();win.check_updates(quiet=True);win.show();sys.exit(app.exec())
+	win=MainWindow();win.show();QTimer.singleShot(100, lambda: win.check_updates(quiet=True));sys.exit(app.exec())
 if __name__=="__main__":start()
