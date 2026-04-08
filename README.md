@@ -3,13 +3,6 @@
 # Audio Spectrum
 Audio visualization tool.
 
-## Key Features
-* **Multi-format Support**: Works with MP3, WAV, FLAC, and M4A.
-* **High-Quality Rendering**: Powered by Skia, OpenCV and Librosa.
-* **Customizable Styles**: Change colors, stroke thickness, and templates.
-* **Smart Sequence**: Create multiple videos with different templates automatically.
-* **PRO Features**: Advanced templates (requires activation).
-
 ## Templates Gallery
 <div align="center">
 	<img src="assets/images/templates/circuit_board.svg" width="150" hspace="5" vspace="5" style="background:white;">
@@ -43,6 +36,13 @@ Audio visualization tool.
 	<img src="assets/images/templates/triangles_cloud.svg" width="150" hspace="5" vspace="5" style="background:white;">
 	<img src="assets/images/templates/wave_linear.svg" width="150" hspace="5" vspace="5" style="background:white;">
 </div>
+
+## Key Features
+* **Multi-format Support**: Works with MP3, WAV, FLAC, and M4A.
+* **High-Quality Rendering**: Powered by Skia, OpenCV and Librosa.
+* **Customizable Styles**: Change colors, stroke thickness, and templates.
+* **Smart Sequence**: Create multiple videos with different templates automatically.
+* **PRO Features**: Advanced templates (requires activation).
 
 ## Installation
 Just download the latest `AudioSpectrum_Setup.exe` from the **Releases** section and follow the instructions.
