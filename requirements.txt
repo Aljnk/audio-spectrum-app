@@ -1,7 +1,6 @@
 PySide6
 librosa
-moviepy
 numpy
-Pillow
-proglog
 requests
+skia-python
+opencv-python

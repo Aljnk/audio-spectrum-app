@@ -1,42 +1,94 @@
-import numpy as np,colorsys,math
-from PIL import Image,ImageDraw
-def draw_frame(t,data,w,h,stroke,colors,spec_color='multi',key=None):
-	try:
-		img=Image.new('RGB',(w,h),colors[0]);draw=ImageDraw.Draw(img);n=len(data);X,W,rad,rh=8,18,80,192
-		sl=346;cx,cy=w/2,h/2;bh,bs,da=8,4,W/2
-		for i,v in enumerate(data):
-			sec,li=i//19,i%19
-			if spec_color=='multi':
-				rgb=colorsys.hsv_to_rgb(i/n,0.8,1.0);clr=(int(rgb[0]*255),int(rgb[1]*255),int(rgb[2]*255))
-			else:clr=(int(spec_color[1:3],16),int(spec_color[3:5],16),int(spec_color[5:7],16))
-			nb=int(v*rh/(bh+bs))
-			if li<13:
-				pos=(li-6)*26.4
-				if sec==0:bx,by,nx,ny,tx,ty=cx+pos,cy-sl/2-rad,0,-1,1,0
-				elif sec==1:bx,by,nx,ny,tx,ty=cx+sl/2+rad,cy+pos,1,0,0,1
-				elif sec==2:bx,by,nx,ny,tx,ty=cx-pos,cy+sl/2+rad,0,1,1,0
-				else:bx,by,nx,ny,tx,ty=cx-sl/2-rad,cy-pos,-1,0,0,1
-				for r1,r2,d,f in [(0,nb*(bh+bs)+bh,da+stroke,colors[1]),(0,nb*(bh+bs)+bh,da,None)]:
-					for j in range(nb+1):
-						ri,ro=j*(bh+bs),j*(bh+bs)+bh
-						if f is None:
-							p1,p2=(bx+ri*nx-da*tx,by+ri*ny-da*ty),(bx+ro*nx+da*tx,by+ro*ny+da*ty);draw.rectangle([min(p1[0],p2[0]),min(p1[1],p2[1]),max(p1[0],p2[0]),max(p1[1],p2[1])],fill=clr)
-						else:
-							p1,p2=(bx+(ri-stroke)*nx-d*tx,by+(ri-stroke)*ny-d*ty),(bx+(ro+stroke)*nx+d*tx,by+(ro+stroke)*ny+d*ty);draw.rectangle([min(p1[0],p2[0]),min(p1[1],p2[1]),max(p1[0],p2[0]),max(p1[1],p2[1])],fill=f)
+import numpy as np,colorsys,math,skia,time,os,sys
+try:import cv2
+except:pass
+_c={}
+_prof={'init':0,'loop':0,'stroke':0,'blur':0,'fill':0,'snap':0,'frames':0}
+_do_prof='--profile' in sys.argv
+
+def draw_frame(t,data,w,h,stroke,colors,spec_color='multi',key=None,stroke_style='solid'):
+	global _prof
+	if _do_prof:
+		if t==0:_prof={k:0 for k in _prof}
+		t0=time.perf_counter()
+	n,out_w=len(data),stroke
+	ck=(n,spec_color,w,h,out_w,colors[0],colors[1],stroke_style)
+	if ck not in _c:
+		bg_c=int(colors[0][1:],16)|0xFF000000
+		bd_c=int(colors[1][1:],16)|0xFF000000
+		buf=np.zeros((h,w,4),dtype=np.uint8)
+		info=skia.ImageInfo.Make(w,h,skia.kRGBA_8888_ColorType,skia.kPremul_AlphaType)
+		surf=skia.Surface.MakeRasterDirect(info,buf)
+		if spec_color=='multi':
+			fps=[skia.Paint(Color=skia.Color(int(r*255),int(g*255),int(b*255)),AntiAlias=True,Style=skia.Paint.kFill_Style) for r,g,b in [colorsys.hsv_to_rgb(i/n,0.8,1.0) for i in range(n)]]
+		else:
+			fps=skia.Paint(Color=int(spec_color[1:],16)|0xFF000000,AntiAlias=True,Style=skia.Paint.kFill_Style)
+		bp=None;k_size=0
+		if out_w>0:
+			bp=skia.Paint(Color=bd_c,Style=skia.Paint.kStrokeAndFill_Style,StrokeWidth=out_w*2,StrokeJoin=skia.Paint.kRound_Join,AntiAlias=True)
+			if stroke_style=='gradient':
+				k_size=int(out_w*3)|1
+				if k_size<3:k_size=3
+		_c[ck]={'buf':buf,'surf':surf,'bg_c':bg_c,'fps':fps,'bp':bp,'k_size':k_size}
+	cv=_c[ck]
+	buf,surf,bg_c,fps,bp,k_size=cv['buf'],cv['surf'],cv['bg_c'],cv['fps'],cv['bp'],cv['k_size']
+	if _do_prof:t1=time.perf_counter()
+	X,W,rad,rh=8,18,80,192;sl=346;cx,cy=w/2,h/2;bh,bs,da=8,4,W/2
+	fill_paths=[skia.Path() for _ in range(n)] if type(fps) is list else skia.Path()
+	for i,v in enumerate(data):
+		sec,li=i//19,i%19;nb=int(v*rh/(bh+bs))
+		fp=fill_paths[i] if type(fps) is list else fill_paths
+		if li<13:
+			pos=(li-6)*26.4
+			if sec==0:bx,by,nx,ny,tx,ty=cx+pos,cy-sl/2-rad,0,-1,1,0
+			elif sec==1:bx,by,nx,ny,tx,ty=cx+sl/2+rad,cy+pos,1,0,0,1
+			elif sec==2:bx,by,nx,ny,tx,ty=cx-pos,cy+sl/2+rad,0,1,1,0
+			else:bx,by,nx,ny,tx,ty=cx-sl/2-rad,cy-pos,-1,0,0,1
+			for j in range(nb+1):
+				ri,ro=j*(bh+bs),j*(bh+bs)+bh
+				p1,p2=(bx+ri*nx-da*tx,by+ri*ny-da*ty),(bx+ro*nx+da*tx,by+ro*ny+da*ty)
+				fp.addRect(skia.Rect.MakeLTRB(min(p1[0],p2[0]),min(p1[1],p2[1]),max(p1[0],p2[0]),max(p1[1],p2[1])))
+		else:
+			ci,(acx,acy)=li-13,[(cx+sl/2,cy-sl/2),(cx+sl/2,cy+sl/2),(cx-sl/2,cy+sl/2),(cx-sl/2,cy-sl/2)][sec]
+			ang=math.radians([-90,0,90,180][sec]+(ci+0.5)*15)
+			for j in range(nb+1):
+				ri,ro=rad+j*(bh+bs),rad+j*(bh+bs)+bh;d=(ri*math.radians(15)-X)/(2*max(1,ri))
+				a1,a2=ang-d,ang+d
+				pts=[(acx+ri*math.cos(a1),acy+ri*math.sin(a1)),(acx+ri*math.cos(a2),acy+ri*math.sin(a2)),(acx+ro*math.cos(a2),acy+ro*math.sin(a2)),(acx+ro*math.cos(a1),acy+ro*math.sin(a1))]
+				fp.moveTo(pts[0][0],pts[0][1]);fp.lineTo(pts[1][0],pts[1][1]);fp.lineTo(pts[2][0],pts[2][1]);fp.lineTo(pts[3][0],pts[3][1]);fp.close()
+	if _do_prof:t2=time.perf_counter()
+	with surf as canvas:
+		canvas.clear(bg_c)
+		if bp:
+			if type(fps) is list:
+				for i in range(n):canvas.drawPath(fill_paths[i],bp)
 			else:
-				ci,(acx,acy)=li-13,[(cx+sl/2,cy-sl/2),(cx+sl/2,cy+sl/2),(cx-sl/2,cy+sl/2),(cx-sl/2,cy-sl/2)][sec]
-				ang=math.radians([-90,0,90,180][sec]+(ci+0.5)*15)
-				for f in [colors[1],clr]:
-					for j in range(nb+1):
-						ri,ro=rad+j*(bh+bs),rad+j*(bh+bs)+bh;d=(ri*math.radians(15)-X)/(2*max(1,ri))
-						if f==colors[1]:
-							r1,r2,dd=ri-stroke,ro+stroke,d+stroke/max(1,ri)
-							a1,a2=ang-dd,ang+dd;pts=[(acx+r1*math.cos(a1),acy+r1*math.sin(a1)),(acx+r1*math.cos(a2),acy+r1*math.sin(a2)),(acx+r2*math.cos(a2),acy+r2*math.sin(a2)),(acx+r2*math.cos(a1),acy+r2*math.sin(a1))];draw.polygon(pts,fill=f)
-						else:
-							a1,a2=ang-d,ang+d;pts=[(acx+ri*math.cos(a1),acy+ri*math.sin(a1)),(acx+ri*math.cos(a2),acy+ri*math.sin(a2)),(acx+ro*math.cos(a2),acy+ro*math.sin(a2)),(acx+ro*math.cos(a1),acy+ro*math.sin(a1))];draw.polygon(pts,fill=f)
-		return img
-	except Exception as e:print(f"Error: {e}");return Image.new('RGB',(w,h),colors[0])
-def draw_svg(t,data,w,h,stroke,colors,spec_color='multi'):
+				canvas.drawPath(fill_paths,bp)
+			canvas.flush()
+		if _do_prof:t3=time.perf_counter()
+		if bp and k_size>0 and stroke_style=='gradient' and 'cv2' in sys.modules:
+			cv2.GaussianBlur(buf,(k_size,k_size),0,dst=buf)
+		if _do_prof:t4=time.perf_counter()
+		if type(fps) is list:
+			for i in range(n):canvas.drawPath(fill_paths[i],fps[i])
+		else:
+			canvas.drawPath(fill_paths,fps)
+		if _do_prof:t5=time.perf_counter()
+	res=buf[:,:,:3]
+	if _do_prof:
+		t6=time.perf_counter()
+		_prof['init']+=t1-t0;_prof['loop']+=t2-t1;_prof['stroke']+=t3-t2;_prof['blur']+=t4-t3;_prof['fill']+=t5-t4;_prof['snap']+=t6-t5;_prof['frames']+=1
+		if _prof['frames']%20==0:
+			try:
+				tmpl_n=__name__.split('.')[-1];spec_c=str(spec_color).replace('#','')
+				log_f=f"prof_{tmpl_n}_st{stroke}_{stroke_style}_{spec_c}.log"
+				with open(os.path.join(os.environ.get("APPDATA",""),"Aljnk","AudioSpectrum","temp",log_f),"w") as f:
+					f.write(f"DRAW PROFILING {tmpl_n} (Frames: {_prof['frames']})\n")
+					for k,v in _prof.items():
+						if k!='frames':f.write(f"{k}: {v:.4f}s (Avg: {v/_prof['frames']:.4f}s)\n")
+			except:pass
+	return res
+
+def draw_svg(t,data,w,h,stroke,colors,spec_color='multi',stroke_style='gradient'):
 	n=len(data);X,W,rad,rh=8,18,80,192;sl=346;cx,cy=w/2,h/2;bh,bs,da=8,4,9;els=[];pts=[]
 	for i,v in enumerate(data):
 		sec,li=i//19,i%19;nb=int(v*rh/12)
@@ -47,26 +99,30 @@ def draw_svg(t,data,w,h,stroke,colors,spec_color='multi'):
 			elif sec==1:bx,by,nx,ny,tx,ty=cx+sl/2+rad,cy+pos,1,0,0,1
 			elif sec==2:bx,by,nx,ny,tx,ty=cx-pos,cy+sl/2+rad,0,1,1,0
 			else:bx,by,nx,ny,tx,ty=cx-sl/2-rad,cy-pos,-1,0,0,1
-			for r1_o,r2_o,d_o,f_o in [(0,nb*12+8,da+stroke,colors[1]),(0,nb*12+8,da,None)]:
-				if f_o==colors[1] and stroke<=0:continue
-				for j in range(nb+1):
-					ri,ro,fc,d=j*12,j*12+8,f_o if f_o else clr,d_o;r1,r2=(ri-stroke,ro+stroke) if f_o else (ri,ro)
-					px1,py1,px2,py2=bx+r1*nx-d*tx,by+r1*ny-d*ty,bx+r2*nx+d*tx,by+r2*ny+d*ty
-					ex,ey,ew,eh=min(px1,px2),min(py1,py2),abs(px2-px1),abs(py2-py1)
-					els.append(('r',ex,ey,ew,eh,fc));pts.extend([(ex,ey),(ex+ew,ey+eh)])
+			for j in range(nb+1):
+				ri,ro=j*12,j*12+8
+				px1,py1,px2,py2=bx+ri*nx-da*tx,by+ri*ny-da*ty,bx+ro*nx+da*tx,by+ro*ny+da*ty
+				ex,ey,ew,eh=min(px1,px2),min(py1,py2),abs(px2-px1),abs(py2-py1)
+				els.append(('r',ex,ey,ew,eh,clr));pts.extend([(ex,ey),(ex+ew,ey+eh)])
 		else:
 			ci,(acx,acy)=li-13,[(cx+sl/2,cy-sl/2),(cx+sl/2,cy+sl/2),(cx-sl/2,cy+sl/2),(cx-sl/2,cy-sl/2)][sec]
 			ang=math.radians([-90,0,90,180][sec]+(ci+0.5)*15)
-			for f_o in [colors[1],None]:
-				if f_o==colors[1] and stroke<=0:continue
-				for j in range(nb+1):
-					ri,ro,fc=rad+j*12,rad+j*12+8,f_o if f_o else clr;d=(ri*math.radians(15)-X)/(2*max(1,ri))
-					R1,R2,dd=(ri-stroke,ro+stroke,d+stroke/max(1,ri)) if f_o else (ri,ro,d)
-					a1,a2=ang-dd,ang+dd;p=[(acx+R1*math.cos(a1),acy+R1*math.sin(a1)),(acx+R1*math.cos(a2),acy+R1*math.sin(a2)),(acx+R2*math.cos(a2),acy+R2*math.sin(a2)),(acx+R2*math.cos(a1),acy+R2*math.sin(a1))]
-					els.append(('p',p,fc));pts.extend(p)
-	x_mi,y_mi,x_ma,y_ma=min(p[0] for p in pts),min(p[1] for p in pts),max(p[0] for p in pts),max(p[1] for p in pts)
+			for j in range(nb+1):
+				ri,ro=rad+j*12,rad+j*12+8;d=(ri*math.radians(15)-X)/(2*max(1,ri))
+				a1,a2=ang-d,ang+d
+				p=[(acx+ri*math.cos(a1),acy+ri*math.sin(a1)),(acx+ri*math.cos(a2),acy+ri*math.sin(a2)),(acx+ro*math.cos(a2),acy+ro*math.sin(a2)),(acx+ro*math.cos(a1),acy+ro*math.sin(a1))]
+				els.append(('p',p,clr));pts.extend(p)
+	x_mi,y_mi=min(p[0] for p in pts)-stroke,min(p[1] for p in pts)-stroke
+	x_ma,y_ma=max(p[0] for p in pts)+stroke,max(p[1] for p in pts)+stroke
 	sw,sh=x_ma-x_mi,y_ma-y_mi;sd=max(sw,sh);ox,oy=(sd-sw)/2-x_mi,(sd-sh)/2-y_mi
 	res=[f'<svg width="{sd:.1f}" height="{sd:.1f}" viewBox="0 0 {sd:.1f} {sd:.1f}" xmlns="http://www.w3.org/2000/svg">']
+	if stroke>0 and stroke_style=='gradient':
+		res.append(f'<defs><filter id="blur"><feGaussianBlur stdDeviation="{max(1,stroke/3)}"/></filter></defs>')
+	if stroke>0:
+		filt=' filter="url(#blur)"' if stroke_style=='gradient' else ''
+		for e in els:
+			if e[0]=='r':res.append(f'<rect x="{e[1]+ox:.1f}" y="{e[2]+oy:.1f}" width="{e[3]:.1f}" height="{e[4]:.1f}" fill="{colors[1]}" stroke="{colors[1]}" stroke-width="{stroke*2}" stroke-linejoin="round"{filt}/>')
+			else:p=e[1];res.append(f'<path d="M{p[0][0]+ox:.1f} {p[0][1]+oy:.1f} L{p[1][0]+ox:.1f} {p[1][1]+oy:.1f} L{p[2][0]+ox:.1f} {p[2][1]+oy:.1f} L{p[3][0]+ox:.1f} {p[3][1]+oy:.1f} Z" fill="{colors[1]}" stroke="{colors[1]}" stroke-width="{stroke*2}" stroke-linejoin="round"{filt}/>')
 	for e in els:
 		if e[0]=='r':res.append(f'<rect x="{e[1]+ox:.1f}" y="{e[2]+oy:.1f}" width="{e[3]:.1f}" height="{e[4]:.1f}" fill="{e[5]}"/>')
 		else:p=e[1];res.append(f'<path d="M{p[0][0]+ox:.1f} {p[0][1]+oy:.1f} L{p[1][0]+ox:.1f} {p[1][1]+oy:.1f} L{p[2][0]+ox:.1f} {p[2][1]+oy:.1f} L{p[3][0]+ox:.1f} {p[3][1]+oy:.1f} Z" fill="{e[2]}"/>')
